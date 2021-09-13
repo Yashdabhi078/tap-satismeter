@@ -10,7 +10,7 @@ setup(
     classifiers=["Programming Language :: Python :: 3 :: Only"],
     py_modules=["tap_satismeter"],
     install_requires=[
-        "singer-python>=5.0.12",
+        "singer-python>=5.12.2",
         "requests>=2.22.0",
         "arrow>=0.14.5",
         "tenacity>=5.0.4",
