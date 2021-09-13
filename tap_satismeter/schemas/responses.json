@@ -26,8 +26,22 @@
 		"answers": {
             "type": ["null", "array"],
             "items": {
-                "type": "string"
-            }
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": ["null", "string"]
+                },
+                "name": {
+                  "type": ["null", "string"]
+                },
+                "label": {
+                  "type": ["null", "string"]
+                },
+                "value": {
+                  "type": ["null", "integer"]
+                }
+              }
+          }
         },
 		"feedback": {
 			"type": ["null", "string"]
@@ -133,6 +147,9 @@
         },
 		"score": {
 			"type": ["null", "integer"]
-		}
-	}
+		},
+        "ip": {
+              "type": ["null", "string"]
+        }
+    }
 }

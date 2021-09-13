@@ -10,6 +10,7 @@ from requests.auth import HTTPBasicAuth
 from tenacity import retry, stop_after_attempt, wait_fixed
 from singer import (get_logger, metadata, utils, write_record, write_schema,
                     write_state)
+from singer.transform import transform
 from singer.catalog import Catalog
 from singer.metrics import record_counter, http_request_timer
 
@@ -67,6 +68,8 @@ def get_key_properties(schema_name: str) -> List[str]:
     """ return for each schema which fields are mandatory included. """
     if schema_name == 'responses':
         return ['id', 'created', 'rating', 'category', 'score', 'feedback']
+    elif schema_name == 'response_statistics':
+        return ['id']
     return []
 
 
@@ -91,8 +94,11 @@ def discover():
     return {'streams': streams}
 
 
-def output_responses(stream_id, config: dict, state: dict) -> dict:
+def output_responses(stream, config: dict, state: dict) -> dict:
     """ Query and output the api for individual responses """
+    stream_id = stream.tap_stream_id
+    mdata = metadata.to_map(stream.metadata)
+    schema = stream.schema.to_dict()
 
     while True:
         previous_state_end_datetime = state.get(
@@ -100,7 +106,7 @@ def output_responses(stream_id, config: dict, state: dict) -> dict:
 
         # Start where the previous run left off or it's a first run.
         start_datetime = arrow.get(
-            previous_state_end_datetime or '2015-01-01')
+            previous_state_end_datetime or config.get("start_date", '2015-01-01'))
 
         # request data from the api in blocks of a month
         end_datetime = start_datetime.shift(months=1)
@@ -112,9 +118,9 @@ def output_responses(stream_id, config: dict, state: dict) -> dict:
             "startDate": start_datetime.isoformat(),
             "endDate": end_datetime.isoformat(),
         }
-
+        endpoint = "/responses/"
         res_json = request(
-            '/responses/', params=params,
+            endpoint, params=params,
             auth=HTTPBasicAuth(config["api_key"], None),
             user_agent=config.get('user_agent', None)
         ).json()
@@ -123,13 +129,75 @@ def output_responses(stream_id, config: dict, state: dict) -> dict:
         bookmark = start_datetime
         with record_counter(endpoint=stream_id) as counter:
             for record in res_json['responses']:
-                write_record(stream_id, record)
+                transformed_record = transform(record, schema, metadata=mdata)
+                write_record(stream_id, transformed_record)
                 counter.increment()
                 bookmark = max([arrow.get(record['created']), bookmark])
 
         # If we're not past the current timestamp, set the bookmark
         # to the end_datetime requested as there won't be any new ones
         # coming in for past times.
+        if end_datetime < arrow.utcnow():
+            bookmark = end_datetime
+
+        # Update and export state
+        if 'bookmarks' not in state:
+            state['bookmarks'] = {}
+        state['bookmarks'][stream_id] = {'last_record': bookmark.isoformat()}
+
+        write_state(state)
+
+        # Stop when we had requested past the current timestamp,
+        # there won't be anything more.
+        if end_datetime > arrow.utcnow():
+            break
+
+    return state
+
+
+def output_responses_statistics(stream, config: dict, state: dict) -> dict:
+    """ Query and output the api for individual response statistics"""
+    stream_id = stream.tap_stream_id
+    mdata = metadata.to_map(stream.metadata)
+    schema = stream.schema.to_dict()
+
+    while True:
+        previous_state_end_datetime = state.get(
+            'bookmarks', {}).get(stream_id, {}).get('last_record', None)
+
+        # Start where the previous run left off or it's a first run.
+        start_datetime = arrow.get(
+            previous_state_end_datetime or config.get("start_date", '2015-01-01'))
+
+        # request data from the api in blocks of a month
+        end_datetime = start_datetime.shift(months=1)
+
+        # Fetch data from api
+        params = {
+            "format": "json",
+            "project": config["project_id"],
+            "startDate": start_datetime.isoformat(),
+            "endDate": end_datetime.isoformat(),
+        }
+        endpoint = "/v2/response-statistics/"
+        res_json = request(
+            endpoint, params=params,
+            auth=HTTPBasicAuth(config["api_key"], None),
+            user_agent=config.get('user_agent', None)
+        ).json()
+
+        # Output items
+        bookmark = start_datetime
+        with record_counter(endpoint=stream_id) as counter:
+            for record in res_json['data']:
+                record["start_date"] = str(start_datetime.date())
+                record["end_date"] = str(end_datetime.date())
+
+                # Type Conversation and Transformation
+                transformed_record = transform(record, schema, metadata=mdata)
+                write_record(stream_id, transformed_record)
+                counter.increment()
+
         if end_datetime < arrow.utcnow():
             bookmark = end_datetime
 
@@ -160,7 +228,9 @@ def sync(config: dict, state: dict, catalog: Catalog) -> None:
             write_schema(stream_id, stream.schema.to_dict(), 'id')
 
             if stream_id == 'responses':
-                state = output_responses(stream_id, config, state)
+                state = output_responses(stream, config, state)
+            elif stream_id == 'response_statistics':
+                state = output_responses_statistics(stream, config, state)
             else:
                 LOGGER.error("No handler for stream_id: %s", stream_id)
 

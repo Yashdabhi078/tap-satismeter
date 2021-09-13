@@ -1,0 +1,51 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": ["null", "string"]
+    },
+    "type": {
+      "type": ["null", "string"]
+    },
+    "start_date": {
+      "type": ["null", "string"],
+      "format": "date-time"
+    },
+    "end_date": {
+      "type": ["null", "string"],
+      "format": "date-time"
+    },
+    "attributes": {
+      "type": ["null", "object"],
+      "properties": {
+        "responses": {"type": ["null", "integer"]},
+        "displays": {"type": ["null", "integer"]},
+        "dismissed": {"type": ["null", "integer"]},
+        "promoters": {"type": ["null", "integer"]},
+        "passives": {"type": ["null", "integer"]},
+        "detractors": {"type": ["null", "integer"]},
+        "nps": {"type": ["null", "number"]},
+        "frequency": {
+          "type": ["null", "string"]
+        }
+      }
+    },
+    "relationships": {
+      "type": ["null", "object"],
+      "properties": {
+        "project" : {
+          "type": ["null", "object"],
+          "properties": {
+            "data": {
+              "type": ["null", "object"],
+              "properties": {
+                "id": {"type": ["null", "string"]},
+                "type": {"type": ["null", "string"]}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
